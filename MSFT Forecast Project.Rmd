@@ -1,0 +1,151 @@
+---
+title: "Forecasting MSFT Stock Price Using Time Series Analysis"
+output: html_notebook
+---
+
+Solidifying the concepts of Time Series Analysis, I wanted to practice the skills and concepts that I have learned to see if I would be able to forecast Microsoft (MSFT) stock price for the next 30 days. 
+
+Below are the packages I used and can be loaded by the following: 
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(forecast)
+library(openblender)
+```
+
+The data that I used was from OpenBlender.io by using their package to import the data set.
+
+I wanted the last 5 years of data. 2018 - Current date (Aug 12, 22). This was auto-generated code from their website.
+
+```{r}
+action <- "API_getObservationsFromDataset"
+
+# ANCHOR: 'Microsoft Corporation Price'
+
+
+parameters <- list( 
+  token="62f6b6d4951629199b2aabda3TbtwBMEsKMkZRzhvnaolC1U6n62Gg",
+  id_user="62f6b6d4951629199b2aabda",
+  id_dataset="5d4ca8709516290b01c9d725",
+  date_filter = list(start_date="2018-01-01T08:00:00.000Z", end_date="2022-08-12"),
+  add_time = list(treatment = "date") 
+)
+
+
+df <- openblender::call(action, parameters)$sample
+head(df)
+```
+
+After importing the df, I wanted to change the 'timestamp' column to be in m/d/y format only for simplicity. Using the lubridate package, there are 2 functions that helped me get the result I wanted. "as_datetime" and "as_date". There may be an easier way to do this next part but I didn't care enough about scouring the web for answers. I just wanted it done. I created the column 'datetime' which transformed the "timestamp" format into "datetime" format. Then column 'Date' to transform the "datetime" format into date only. 
+
+```{r}
+df$datetime <- as_datetime(df$timestamp)
+df$Date <- as_date(df$datetime)
+head(df)
+```
+
+Once that was done I made a new df called 'MSFT' with all the original columns minus the 'timestamp' column and the 'Date' column to replace it. 
+
+```{r}
+MSFT <- df %>% select(high,low,open,price,volume,Date)
+head(MSFT)
+```
+
+I created a test df to test the model that I will be making. Since I want to see the forecast for 60 days I narrowed the original 'MSFT' data to include data up to June 12, 2022 which was 2 months or 60 days ago. 
+
+```{r}
+test.MSFT <- MSFT %>% filter(Date <= "2022-06-12")
+head(test.MSFT)
+```
+
+Since we filtered out the most recent 2 months. We need that data back so we can see how our model worked in comparison with actual price action. I slapped that back in using the same line of code but using a greater than sign. 
+
+```{r}
+result.MSFT <- MSFT %>% filter(Date >= "2022-06-12")
+head(result.MSFT)
+```
+
+Lets begin making our Time Series using the 'price' column using the ts() function in R.
+
+```{r}
+test.MSFT.ts<- ts(test.MSFT$price, start = c(2018,1), frequency = 252)
+
+plot(test.MSFT.ts)
+```
+(SIDE NOTE: Please see the df in order to see how the data was organized initially. The first time I plotted this ts the following described below happened and I explain how I fixed the inconsistency.) 
+
+After plotting the ts, I quickly realized the chart was backwards by looking at the plot. However, this was an easy fix because the data was not sorted oldest to newest but vise-versa. I sorted the ts oldest to newest because the ts() function reads the data in order and since it was ordered by newest to oldest it was flipping the plot. This is the code to flip it back. We also need to run the ts() code once again to correctly assign the ts to the variable and plot it to see how our results have changed.
+
+```{r}
+test.MSFT <- test.MSFT[order(as.Date(test.MSFT$Date, format="%m/%d/%Y")),]
+
+test.MSFT.ts<- ts(test.MSFT$price, start = c(2018,1), frequency = 252)
+
+plot(test.MSFT.ts)
+```
+
+Now all is well in the world of this Time Series. 
+
+Okay, lets continue...
+
+Using the ARIMA model I want to forecast the next 60 days of MSFT.I used the auto.arima() function since it seeks to identify the most optimal parameters and returns a fitted ARIMA model. 
+
+```{r}
+tMSFT.arima <- auto.arima(test.MSFT.ts)
+
+tMSFT.arima
+```
+
+Now lets take a look at the residuals.
+
+```{r}
+plot(tMSFT.arima$residuals, ylab= "Residuals")
+acf(tMSFT.arima$residuals)
+```
+
+fig.1 Seems to fluctuate around a mean of zero and has a uniform variance
+fig.2 No autocorrelation of residuals 
+
+Now lets use the forecast function to help us see into the future.
+
+```{r}
+tMSFT.fc <- forecast(tMSFT.arima, 60)
+head(tMSFT.fc)
+```
+Lets test the accuracy of this model. 
+
+```{r}
+accuracy(tMSFT.fc)
+```
+
+The MAPE is 1.19 which if you subtract from a score of 100 is 98.81% accurate. Nice!
+
+
+
+Perfect, now that we know our model is accurate, lets see our forecast based on the ARIMA model. 
+
+```{r}
+plot(tMSFT.fc, xlab = "Date", ylab = "Price", main = "Results for the Forecast of MSFT Price")
+```
+
+Looks great! 
+
+Now lets see how it worked with the actual price action. We will add the results df that we made earlier back into this plot in red. 
+
+```{r}
+plot(tMSFT.fc, xlab = "Date", ylab = "Price", main = "Results for the Forecast of MSFT Price")
+lines(result.MSFT.ts, col="red")
+```
+
+As you can see the ARIMA model performed very well! And in this case actually made us a very handsome profit! 
+
+If you got this far, I appreciate you sticking around and I hope that this was informative and exciting to see. I had a blast completing this analysis! 
+
+Thank you.
+- ALEX K.
+
+
+
+
+
